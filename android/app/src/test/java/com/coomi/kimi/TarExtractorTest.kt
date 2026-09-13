@@ -23,7 +23,8 @@ class TarExtractorTest {
      * resources through a jar on the classpath, where no file path exists.
      */
     private val fixtureBytes: ByteArray by lazy {
-        javaClass.classLoader.getResourceAsStream("fixture.tar.gz")?.readBytes()
+        val loader = javaClass.classLoader ?: error("no class loader for unit tests")
+        loader.getResourceAsStream("fixture.tar.gz")?.readBytes()
             ?: error("fixture.tar.gz missing from test resources")
     }
 

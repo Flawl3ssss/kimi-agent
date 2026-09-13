@@ -107,7 +107,12 @@ class StubBridge:
 @pytest.fixture
 def bridge(tmp_path):
     mcp_host._SERVERS.clear()
-    b = StubBridge(Settings(workspace=tmp_path))
+    settings = Settings(workspace=tmp_path)
+    # runtime_doctor reports the configured kernel path; leaving it to
+    # default_kimi_binary() means the assertion depends on whether Kimi happens
+    # to be installed on the machine running the tests (it is not on CI).
+    settings.kimi_bin = str(tmp_path / "kimi")
+    b = StubBridge(settings)
     yield b
     mcp_host._SERVERS.clear()
 
