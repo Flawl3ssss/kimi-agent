@@ -1,0 +1,36 @@
+# coomi-kimi: a Coomi-equivalent coding agent whose brain is Kimi Code.
+#
+# The Python package is only the host: an ACP client that drives `kimi acp`, an
+# MCP server that gives the model Coomi's capabilities (memory, plans,
+# sub-agents, skills, workflows, loops, web), and an HTTP/WebSocket facade with a
+# chat UI. The agent loop itself belongs to Kimi Code and is not reimplemented.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coomi-kimi"
+version = "0.1.0"
+description = "Coomi-style coding agent built on Kimi Code over ACP"
+requires-python = ">=3.11"
+dependencies = [
+    "agent-client-protocol==0.12.1",
+    "mcp==2.2.0",
+    "aiohttp==3.14.3",
+    "rich==15.0.0",
+    "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0"]
+
+[project.scripts]
+coomi-kimi = "kimi_agent.cli:main"
+
+[tool.setuptools]
+packages = ["kimi_agent", "kimi_agent.tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

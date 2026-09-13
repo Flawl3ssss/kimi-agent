@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coomi · Kimi Code console</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23161A1D'/><path d='M9 21.5V10.5L16 16l7-5.5v11' stroke='%234FB6A8' stroke-width='2.4' fill='none' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+<a class="skip" href="#prompt">Перейти к полю ввода</a>
+
+<div class="frame">
+  <!-- ── left: sessions & state ────────────────────────────────────── -->
+  <aside class="rail" aria-label="Сессии и состояние">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="brand-name">Coomi<span class="thin"> · Kimi Code</span></span>
+    </div>
+
+    <div class="rail-block">
+      <div class="row-label">
+        <span>Сессии</span>
+        <button class="mini" id="btn-new" title="Новая сессия (session/new)">＋ новая</button>
+      </div>
+      <ul class="sessions" id="sessions" role="list"></ul>
+      <p class="hint" id="sessions-hint">Ни одной сессии. Создайте — агент ответит.</p>
+    </div>
+
+    <div class="rail-block">
+      <div class="row-label"><span>Сессия</span><span class="mono dim" id="sid"></span></div>
+      <label class="field"><span>Режим</span>
+        <select id="sel-mode" aria-label="Режим работы"></select>
+      </label>
+      <label class="field"><span>Модель</span>
+        <select id="sel-model" aria-label="Модель"></select>
+      </label>
+      <label class="field"><span>Думы</span>
+        <select id="sel-thinking" aria-label="Режим размышлений"></select>
+      </label>
+      <div class="meter" id="meter" hidden>
+        <div class="meter-bar"><i id="meter-fill"></i></div>
+        <div class="meter-text mono" id="meter-text"></div>
+      </div>
+    </div>
+
+    <div class="rail-block grow">
+      <div class="row-label"><span>План</span><span class="dim mono" id="plan-count"></span></div>
+      <ol class="plan" id="plan"></ol>
+      <p class="hint" id="plan-hint">Инструмент <code>update_plan</code> выведет шаги сюда.</p>
+    </div>
+
+    <div class="rail-block">
+      <details class="adv">
+        <summary>Диагностика</summary>
+        <div class="adv-body">
+          <div id="diag-agent" class="mono small"></div>
+          <div id="diag-tools" class="mono small"></div>
+          <button class="mini ghost" id="btn-settings">Модель и ключ</button>
+          <button class="mini ghost" id="btn-log">Лог агента</button>
+          <button class="mini ghost" id="btn-prune">Закрыть лишние</button>
+        </div>
+      </details>
+    </div>
+  </aside>
+
+  <!-- ── center: transcript ────────────────────────────────────────── -->
+  <main class="stage">
+    <header class="topbar">
+      <div class="status">
+        <i class="dot" id="net-dot" aria-hidden="true"></i>
+        <span id="net-text">подключение…</span>
+      </div>
+      <div class="topbar-actions">
+        <label class="attach" title="Приложить изображение к ходу">
+          <input type="file" id="img" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+          <span>Изображение</span>
+        </label>
+        <button class="mini danger" id="btn-stop" disabled>Прервать</button>
+      </div>
+    </header>
+
+    <div class="signal" id="signal" aria-live="polite">
+      <span class="signal-node" data-k="think">думает</span>
+      <span class="signal-rail" aria-hidden="true"></span>
+      <span class="signal-node" data-k="tool">инструмент</span>
+      <span class="signal-rail" aria-hidden="true"></span>
+      <span class="signal-node" data-k="result">результат</span>
+    </div>
+
+    <div class="thread" id="thread" role="log" aria-live="polite" tabindex="0">
+      <div class="empty" id="empty">
+        <p class="empty-title">Пусто — и это место для задачи.</p>
+        <p class="empty-body">Опишите, что сделать в <code id="empty-cwd">—</code>. Агент сам читает файлы,
+          правит код и запускает команды; рискованные шаги спросят подтверждения.</p>
+        <div class="empty-asks">
+          <button class="ask" data-ask="Опиши структуру этого проекта и его точки входа.">Разобрать проект</button>
+          <button class="ask" data-ask="Найди мёртвый код и продублированную логику, предложи конкретные правки.">Найти дубли</button>
+          <button class="ask" data-ask="Прогони тесты/сборку и почини то, что падает.">Починить сборку</button>
+        </div>
+      </div>
+    </div>
+
+    <form class="composer" id="composer">
+      <div class="attachments" id="attachments" hidden></div>
+      <textarea id="prompt" rows="2" placeholder="Задача для агента…  Enter — отправить, Shift+Enter — новая строка"
+                autocomplete="off" aria-label="Сообщение агенту"></textarea>
+      <div class="composer-foot">
+        <span class="mono dim" id="foot-state"></span>
+        <button class="send" id="btn-send" type="submit">Отправить</button>
+      </div>
+    </form>
+  </main>
+
+  <!-- ── right: decisions dock ─────────────────────────────────────── -->
+  <aside class="dock" aria-label="Ожидает решения">
+    <div class="dock-head">
+      <h2>Решения</h2>
+      <span class="badge" id="pending-count">0</span>
+    </div>
+    <div class="dock-body" id="dock">
+      <p class="hint" id="dock-hint">Здесь появятся подтверждения инструментов и вопросы агента.</p>
+    </div>
+    <div class="dock-foot mono" id="dock-auto" hidden></div>
+  </aside>
+</div>
+
+<div class="toast-rail" id="toasts" aria-live="polite"></div>
+
+<!-- ── provider settings ─────────────────────────────────────────────
+     Kimi Code reads credentials only from ~/.kimi-code/config.toml, never from
+     the environment, so on a phone this form is the only way to configure one. -->
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="sheet-card">
+    <header class="sheet-head">
+      <h2 id="sheet-title">Модель и ключ</h2>
+      <button class="mini ghost" id="sheet-close" aria-label="Закрыть">✕</button>
+    </header>
+    <p class="hint" id="sheet-state">Читаем <code>~/.kimi-code/config.toml</code>…</p>
+    <form class="sheet-body" id="settings-form">
+      <label class="field"><span>Провайдер (имя)</span>
+        <input id="st-provider" class="mono" autocomplete="off" placeholder="custom">
+      </label>
+      <label class="field"><span>Тип протокола</span>
+        <select id="st-type"></select>
+      </label>
+      <label class="field"><span>Base URL</span>
+        <input id="st-base" class="mono" autocomplete="off" placeholder="https://api.openai.com/v1">
+      </label>
+      <label class="field"><span>Модель (id в API)</span>
+        <input id="st-model" class="mono" autocomplete="off" placeholder="qwen3-coder">
+      </label>
+      <label class="field"><span>API key</span>
+        <input id="st-key" type="password" autocomplete="off" placeholder="— оставить как есть —">
+      </label>
+      <div class="field-row">
+        <label class="field"><span>Контекст, токенов</span>
+          <input id="st-ctx" type="number" min="1024" step="1024" value="204800">
+        </label>
+        <label class="field"><span>Автокомпакт, %</span>
+          <input id="st-compact" type="number" min="0" max="99" step="1" value="90">
+        </label>
+      </div>
+      <p class="hint small">0 — выключено. Kimi компактит, когда свободные токены падают ниже
+        <code>max_context_size × (100 − %)</code>: 90 означает «свободно 10 %».</p>
+      <label class="field"><span>Права по умолчанию</span>
+        <select id="st-perm"></select>
+      </label>
+      <label class="check"><input type="checkbox" id="st-think" checked> Thinking включён</label>
+      <label class="check"><input type="checkbox" id="st-env"> Ключ в <code>[providers.<n>.env]</code></label>
+      <div class="sheet-foot">
+        <button type="submit" class="send" id="st-save">Сохранить и перезапустить</button>
+        <span class="mono dim" id="st-note"></span>
+      </div>
+    </form>
+    <div class="sheet-providers mono small" id="st-providers"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

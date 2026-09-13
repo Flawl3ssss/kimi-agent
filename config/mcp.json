@@ -1,0 +1,11 @@
+{
+  "_comment": "Advertised to Kimi Code as `mcpServers` on session/new (ACP per-session, never persisted to ~/.kimi-code/mcp.json). The coomi server is the in-process streamable-HTTP bridge in kimi_agent/mcp_host.py — stdio would run it in a separate process with no access to the ACP bridge.",
+  "mcpServers": {
+    "coomi": {
+      "transport": "http",
+      "url": "http://127.0.0.1:8766/mcp",
+      "startupTimeoutMs": 20000,
+      "toolTimeoutMs": 1800000
+    }
+  }
+}

@@ -1,0 +1,11 @@
+build/
+.gradle/
+local.properties
+*.log
+__pycache__/
+.pytest_cache/
+.venv/
+vendor/
+home/
+cache/
+*.pyc

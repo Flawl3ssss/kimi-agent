@@ -1,0 +1,16 @@
+# Runtime dependencies of the Coomi-on-Kimi agent.
+#
+# The brain of the agent is the Kimi Code binary (not a pip package): install it
+# separately, e.g. to ~/.kimi-code/bin/kimi, and put that directory on PATH (see
+# run.sh). Everything below is the host around it.
+#
+# Pinned to the versions this build was verified against on 2026-09-12.
+agent-client-protocol==0.12.1
+mcp==2.2.0
+aiohttp==3.14.3
+rich==15.0.0
+pyyaml==6.0.3
+
+# Tests only (scripts/ uses nothing beyond the standard library).
+pytest==9.1.1
+pytest-asyncio==1.4.0

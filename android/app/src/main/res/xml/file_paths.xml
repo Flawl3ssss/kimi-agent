@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Only the log directory is shareable; the runtime and the agent's
+         KIMI_CODE_HOME (which holds the API key) are never exposed. -->
+    <cache-path name="logs" path="." />
+</paths>

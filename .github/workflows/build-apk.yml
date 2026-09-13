@@ -1,0 +1,120 @@
+name: Build APK
+
+# An APK cannot be produced on the phone: aapt2 is published only as an
+# x86-64 Linux binary. The runner compiles Kotlin/Java and packages; it never
+# executes the arm64 payload, it only verifies and stages it.
+on:
+  workflow_dispatch:
+    inputs:
+      kimi_version:
+        description: Kimi Code version to bundle
+        default: "0.42.0"
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'kimi_agent/**'
+      - 'web/**'
+      - 'scripts/**'
+      - '.github/workflows/build-apk.yml'
+      - 'requirements-runtime.txt'
+
+permissions:
+  contents: read
+
+env:
+  KIMI_VERSION: ${{ github.event.inputs.kimi_version || '0.42.0' }}
+  # From the install manifest; the build fails rather than bundle an unverified binary.
+  KIMI_SHA256: 4fa0d6f7a5171733d9391b074ebfe318e81a7ee83af6c648d51c42834961cc5a
+
+jobs:
+  payload:
+    name: Assemble runtime payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify committed payload
+        run: |
+          set -euo pipefail
+          for f in rootfs.tar.gz deps.tar.gz app.tar.gz; do
+            p="android/app/assets/$f"
+            test -s "$p" || { echo "missing $p — run scripts/package_payload.sh"; exit 1; }
+            tar -tzf "$p" >/dev/null || { echo "$p is not a readable tar.gz"; exit 1; }
+            echo "$f $(du -h "$p" | cut -f1)"
+          done
+          tar -tzf android/app/assets/app.tar.gz | grep -q 'kimi_agent/cli.py' || exit 1
+          tar -tzf android/app/assets/deps.tar.gz | grep -q 'aiohttp/__init__.py' || exit 1
+          test -s android/app/jniLibs/arm64-v8a/libproot.so || exit 1
+
+      - name: Download Kimi Code (linux-arm64)
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 3 -o /tmp/kimi \
+            "https://cdn.kimi.com/kimi-code/binaries/${KIMI_VERSION}/kimi-code-linux-arm64"
+          echo "${KIMI_SHA256}  /tmp/kimi" | sha256sum -c -
+          file /tmp/kimi
+          mkdir -p android/app/jniLibs/arm64-v8a
+          install -m 644 /tmp/kimi android/app/jniLibs/arm64-v8a/libkimi.so
+          du -h android/app/jniLibs/arm64-v8a/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload
+          path: |
+            android/app/assets
+            android/app/jniLibs
+          retention-days: 7
+
+  build:
+    name: Build APK
+    needs: payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload
+          path: .
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Kotlin unit tests (guest command line + tar reader)
+        working-directory: android
+        run: |
+          chmod +x ../gradlew
+          ../gradlew --no-daemon -p . :app:testDebugUnitTest
+
+      - name: Agent tests
+        run: |
+          python -m pip install --quiet -r requirements.txt
+          COOMI_KIMI_HOME=$(mktemp -d) python -m pytest tests -q
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ../gradlew --no-daemon -p . :app:assembleDebug
+
+      - name: Assert the APK really contains the runtime
+        run: |
+          set -euo pipefail
+          apk=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          echo "APK $apk $(du -h "$apk" | cut -f1)"
+          unzip -l "$apk" > /tmp/apk.txt
+          for want in assets/rootfs.tar.gz assets/deps.tar.gz assets/app.tar.gz \
+                      lib/arm64-v8a/libproot.so lib/arm64-v8a/libkimi.so classes.dex; do
+            grep -q "$want" /tmp/apk.txt || { echo "missing $want"; exit 1; }
+          done
+          echo "runtime complete inside the APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coomi-kimi-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30

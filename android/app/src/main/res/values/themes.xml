@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Must be a Theme.AppCompat descendant: MainActivity extends
+         AppCompatActivity, which throws IllegalStateException at onCreate
+         otherwise. The dark variant matches the console's own background. -->
+    <style name="Theme.CoomiKimi" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">#0f1115</item>
+    </style>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Coomi Kimi</string>
+    <string name="channel_name">Agent runtime</string>
+    <string name="channel_desc">Keeps the Kimi Code agent reachable while the app is in the background.</string>
+    <string name="notif_title">Coomi Kimi agent</string>
+</resources>
