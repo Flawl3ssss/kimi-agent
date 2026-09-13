@@ -36,6 +36,7 @@ class Bootstrap(private val ctx: Context, private val log: (String) -> Unit) {
             return true
         }
         layout.readyMarker.delete()
+        healDepsPrefix()
 
         // ".bin" is not cosmetic: aapt2 gunzips assets whose name ends in ".gz"
         // and strips the extension, so "rootfs.tar.gz" reached the device as an
@@ -61,6 +62,27 @@ class Bootstrap(private val ctx: Context, private val log: (String) -> Unit) {
         layout.readyMarker.writeText("ok ${System.currentTimeMillis()}\n")
         log("runtime ready")
         return true
+    }
+
+    /**
+     * The first shipped APK packed deps.tar.gz.bin with a "deps/" prefix, so the
+     * libraries landed in root/deps/deps and startup failed on
+     * "missing after unpack: __init__.py". The archive is fixed, but extract()
+     * is marker-idempotent: an already-installed device would keep the broken
+     * tree. Drop the nested copy and its marker, so the corrected archive is
+     * unpacked in its place. Nothing is *moved* up instead: a copy whose source
+     * lives inside its destination (deps/deps -> deps) never terminates.
+     */
+    private fun healDepsPrefix() {
+        val nested = File(layout.depsDir, "deps")
+        if (!nested.isDirectory) return
+        log("deps: removing nested deps/deps from the first build")
+        if (!runCatching { nested.deleteRecursively() }.isSuccess) {
+            log("deps heal: delete failed, leaving marker so extract rewrites files")
+        }
+        // Always re-extract: the marker proves only that *something* unpacked
+        // here, and for the first build that something had the wrong shape.
+        File(layout.depsDir, ".extracted-deps.tar.gz.bin").delete()
     }
 
     /** Expand `assets/<name>` into [dest]; a per-archive marker keeps it idempotent. */

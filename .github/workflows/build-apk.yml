@@ -78,7 +78,19 @@ jobs:
           tar -tzf android/app/assets/app.tar.gz.bin  > /tmp/app.txt
           tar -tzf android/app/assets/deps.tar.gz.bin > /tmp/deps.txt
           grep -q 'kimi_agent/cli.py'   /tmp/app.txt
-          grep -q 'aiohttp/__init__.py' /tmp/deps.txt
+          # Bootstrap expands each archive directly into its destination, so a
+          # self-prefix breaks it: the first build packed "deps/" inside
+          # deps.tar.gz.bin, the libraries landed in root/deps/deps and the
+          # device died on "missing after unpack: __init__.py". Assert the
+          # anchored path and simulate the expansion for all three archives.
+          grep -q '^\./aiohttp/__init__\.py$' /tmp/deps.txt
+          for a in rootfs deps app; do
+            d=$(mktemp -d)
+            tar -xzf "android/app/assets/$a.tar.gz.bin" -C "$d"
+            echo "$a unpacks to: $(ls "$d" | head -5 | tr '\n' ' ')"
+            test -e "$d/deps" && { echo "$a has a self-prefix again"; exit 1; }
+            rm -rf "$d"
+          done
           # Pinned by RuntimeSpec.requiredFiles(): an archive that lost either
           # would unpack into a runtime that cannot start.
           grep -q '^\./usr/bin/python3\.12$'      /tmp/rootfs.tar.gz.bin.txt

@@ -43,7 +43,13 @@ uv pip install --python /usr/bin/python3.12 --target "$STAGE/deps" --no-cache \
 rm -rf "$STAGE/deps/pip" "$STAGE/deps/setuptools" "$STAGE/deps/wheel" \
        "$STAGE/deps/pkg_resources" "$STAGE/deps/_distutils_hack" 2>/dev/null || true
 find "$STAGE/deps" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
-tar -C "$STAGE" --format=gnu -czf "$ASSETS/deps.tar.gz.bin" deps
+# Pack the CONTENTS of deps/, not the directory itself. Bootstrap expands each
+# archive directly into its destination (root/deps here), so a "deps/" prefix
+# would land the libraries in root/deps/deps and the runtime check for
+# deps/aiohttp/__init__.py fails -- which is exactly how the first shipped APK
+# died on-device with "missing after unpack: __init__.py". rootfs and app were
+# always prefix-free; run.sh and PYTHONPATH depend on that.
+tar -C "$STAGE/deps" --format=gnu -czf "$ASSETS/deps.tar.gz.bin" .
 
 echo "==> agent source"
 find "$PROJ" -maxdepth 3 -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
