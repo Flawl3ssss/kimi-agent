@@ -44,8 +44,12 @@ jobs:
             tar -tzf "$p" >/dev/null || { echo "$p is not a readable tar.gz"; exit 1; }
             echo "$f $(du -h "$p" | cut -f1)"
           done
-          tar -tzf android/app/assets/app.tar.gz | grep -q 'kimi_agent/cli.py' || exit 1
-          tar -tzf android/app/assets/deps.tar.gz | grep -q 'aiohttp/__init__.py' || exit 1
+          # Materialise the listings first: piping tar into `grep -q` makes tar
+          # die of SIGPIPE, and under `set -o pipefail` that is a build failure.
+          tar -tzf android/app/assets/app.tar.gz  > /tmp/app.txt
+          tar -tzf android/app/assets/deps.tar.gz > /tmp/deps.txt
+          grep -q 'kimi_agent/cli.py'         /tmp/app.txt
+          grep -q 'aiohttp/__init__.py'       /tmp/deps.txt
           test -s android/app/jniLibs/arm64-v8a/libproot.so || exit 1
 
       - name: Download Kimi Code (linux-arm64)
