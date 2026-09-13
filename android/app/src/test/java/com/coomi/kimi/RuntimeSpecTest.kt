@@ -66,11 +66,17 @@ class RuntimeSpecTest {
     }
 
     @Test
-    fun hostPathsNeverReachTheGuestCommandLine() {
-        val joined = argv().joinToString(" ")
-        // Only the -r/-b sources and the proot binary may contain host paths.
-        val guest = joined.split("-b").last()
-        assertFalse("host data path leaked: $guest", guest.contains("/data/user/0"))
+    fun guestEnvironmentUsesOnlyGuestPaths() {
+        // The -r/-b *sources* are host paths by design; anything the guest
+        // process itself reads (HOME, PATH, PYTHONPATH, the program) must not
+        // name the Android data dir, or it would not resolve inside the rootfs.
+        val a = argv()
+        val env = a.dropWhile { it != "-i" }.drop(1).takeWhile { it.contains('=') }
+        assertTrue("no env pairs parsed", env.size >= 10)
+        env.forEach { pair ->
+            assertFalse("host path in guest env: $pair", pair.contains("/data/user/0"))
+        }
+        assertEquals(RuntimeSpec.GUEST_PYTHON, a[a.indexOf("-m") - 1])
     }
 
     @Test

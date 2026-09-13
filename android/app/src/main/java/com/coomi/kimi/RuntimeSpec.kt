@@ -111,7 +111,7 @@ object RuntimeSpec {
         File(layout.rootfs, "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1"),
         File(layout.agentDir, "kimi_agent/cli.py"),
         File(layout.depsDir, "aiohttp/__init__.py"),
-        File(layout.kimiBin),
+        layout.kimiBin,
     )
 }
 

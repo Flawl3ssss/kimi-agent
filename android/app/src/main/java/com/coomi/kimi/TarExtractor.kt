@@ -42,8 +42,12 @@ object TarExtractor {
         while (true) {
             var hdr = tar.readHeader() ?: break
             // Apply any GNU 'L' / pax overrides captured before this header.
-            if (tar.pendingName != null) hdr = hdr.copy(name = tar.pendingName)
-            if (tar.pendingSize != null) hdr = hdr.copy(size = tar.pendingSize)
+            // Local vals: pendingName/pendingSize belong to another object, so
+            // Kotlin refuses to smart-cast them even after the null check.
+            val pendingName = tar.pendingName
+            val pendingSize = tar.pendingSize
+            if (pendingName != null) hdr = hdr.copy(name = pendingName)
+            if (pendingSize != null) hdr = hdr.copy(size = pendingSize)
             tar.pendingName = null
             tar.pendingSize = null
             when (hdr.type) {

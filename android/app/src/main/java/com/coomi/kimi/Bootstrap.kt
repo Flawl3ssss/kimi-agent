@@ -21,7 +21,8 @@ import java.io.FileOutputStream
  */
 class Bootstrap(private val ctx: Context, private val log: (String) -> Unit) {
 
-    private val layout = Layout(ctx.filesDir, ctx.applicationInfo.nativeLibraryDir)
+    // applicationInfo.nativeLibraryDir is a String path, not a File.
+    private val layout = Layout(ctx.filesDir, File(ctx.applicationInfo.nativeLibraryDir))
 
     fun layout(): Layout = layout
 
