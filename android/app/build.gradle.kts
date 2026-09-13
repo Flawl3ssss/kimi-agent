@@ -50,6 +50,24 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            // The CI log only showed "FileNotFoundException at <call site>",
+            // which is not enough to tell whether the reader or the filesystem
+            // failed. Full traces + stream output make a red test self-explaining.
+            all {
+                it.testLogging {
+                    events("failed", "skipped")
+                    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+                    showStandardStreams = true
+                    showCauses = true
+                    showStackTraces = true
+                }
+                it.outputs.upToDateWhen { false }
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
