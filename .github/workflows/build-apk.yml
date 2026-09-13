@@ -1,8 +1,12 @@
 name: Build APK
 
-# An APK cannot be produced on the phone: aapt2 is published only as an
-# x86-64 Linux binary. The runner compiles Kotlin/Java and packages; it never
-# executes the arm64 payload, it only verifies and stages it.
+# An APK cannot be produced on the phone: aapt2 is published only as an x86-64
+# Linux binary. The runner compiles Kotlin/Java and packages; it never executes
+# the arm64 payload, it only verifies and stages it.
+#
+# The three runtime tarballs are committed in the repo (android/app/assets).
+# Only Kimi Code itself is fetched at build time: it is 170 MB and would break
+# GitHub's per-file limit, and downloading it lets us pin a sha256.
 on:
   workflow_dispatch:
     inputs:
@@ -29,8 +33,34 @@ env:
   KIMI_SHA256: 4fa0d6f7a5171733d9391b074ebfe318e81a7ee83af6c648d51c42834961cc5a
 
 jobs:
+  kimi-binary:
+    name: Fetch Kimi Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify (linux-arm64)
+        run: |
+          set -euo pipefail
+          url="https://cdn.kimi.com/kimi-code/binaries/${KIMI_VERSION}/kimi-code-linux-arm64"
+          echo "GET $url"
+          curl -fL --retry 5 --retry-delay 3 -o /tmp/kimi "$url"
+          echo "${KIMI_SHA256}  /tmp/kimi" | sha256sum -c -
+          # Cross-compiled: this runner is x86-64, so the binary is only copied.
+          file /tmp/kimi
+          du -h /tmp/kimi
+          mkdir -p /tmp/out && mv /tmp/kimi /tmp/out/libkimi.so
+
+      # A single-file artifact: upload-artifact v4 strips the common leading
+      # directory of multi-path uploads, so a staging path like
+      # android/app/jniLibs/... would silently arrive somewhere else. The build
+      # job locates it by name instead of assuming a layout.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libkimi
+          path: /tmp/out/libkimi.so
+          retention-days: 7
+
   payload:
-    name: Assemble runtime payload
+    name: Validate runtime payload
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,47 +71,46 @@ jobs:
           for f in rootfs.tar.gz deps.tar.gz app.tar.gz; do
             p="android/app/assets/$f"
             test -s "$p" || { echo "missing $p — run scripts/package_payload.sh"; exit 1; }
-            tar -tzf "$p" >/dev/null || { echo "$p is not a readable tar.gz"; exit 1; }
-            echo "$f $(du -h "$p" | cut -f1)"
+            tar -tzf "$p" > "/tmp/$f.txt" || { echo "$p is not a readable tar.gz"; exit 1; }
+            grep -q . "/tmp/$f.txt" || { echo "$p is empty"; exit 1; }
+            echo "$f $(du -h "$p" | cut -f1) ($(wc -l < "/tmp/$f.txt") entries)"
           done
-          # Materialise the listings first: piping tar into `grep -q` makes tar
-          # die of SIGPIPE, and under `set -o pipefail` that is a build failure.
           tar -tzf android/app/assets/app.tar.gz  > /tmp/app.txt
           tar -tzf android/app/assets/deps.tar.gz > /tmp/deps.txt
-          grep -q 'kimi_agent/cli.py'         /tmp/app.txt
-          grep -q 'aiohttp/__init__.py'       /tmp/deps.txt
-          test -s android/app/jniLibs/arm64-v8a/libproot.so || exit 1
+          grep -q 'kimi_agent/cli.py'   /tmp/app.txt
+          grep -q 'aiohttp/__init__.py' /tmp/deps.txt
+          # Pinned by RuntimeSpec.requiredFiles(): an archive that lost either
+          # would unpack into a runtime that cannot start.
+          grep -q '^\./usr/bin/python3\.12$'      /tmp/rootfs.tar.gz.txt
+          grep -q '^\./usr/lib/aarch64-linux-gnu/ld-linux-aarch64\.so\.1$' /tmp/rootfs.tar.gz.txt
+          test -s android/app/jniLibs/arm64-v8a/libproot.so
 
-      - name: Download Kimi Code (linux-arm64)
+      - name: Agent tests
         run: |
-          set -euo pipefail
-          curl -fL --retry 5 --retry-delay 3 -o /tmp/kimi \
-            "https://cdn.kimi.com/kimi-code/binaries/${KIMI_VERSION}/kimi-code-linux-arm64"
-          echo "${KIMI_SHA256}  /tmp/kimi" | sha256sum -c -
-          file /tmp/kimi
-          mkdir -p android/app/jniLibs/arm64-v8a
-          install -m 644 /tmp/kimi android/app/jniLibs/arm64-v8a/libkimi.so
-          du -h android/app/jniLibs/arm64-v8a/*
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: payload
-          path: |
-            android/app/assets
-            android/app/jniLibs
-          retention-days: 7
+          python -m pip install --quiet -r requirements.txt
+          COOMI_KIMI_HOME=$(mktemp -d) python -m pytest tests -q
 
   build:
     name: Build APK
-    needs: payload
+    needs: [kimi-binary, payload]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: payload
-          path: .
+          name: libkimi
+          path: /tmp/kimi-artifact
+
+      - name: Stage Kimi Code as a jniLib
+        run: |
+          set -euo pipefail
+          src=$(find /tmp/kimi-artifact -name libkimi.so | head -1)
+          test -n "$src" || { echo "artifact did not contain libkimi.so"; exit 1; }
+          echo "${KIMI_SHA256}  $src" | sha256sum -c -
+          mkdir -p android/app/jniLibs/arm64-v8a
+          install -m 644 "$src" android/app/jniLibs/arm64-v8a/libkimi.so
+          du -h android/app/jniLibs/arm64-v8a/*
 
       - uses: actions/setup-java@v4
         with:
@@ -96,11 +125,6 @@ jobs:
           chmod +x ../gradlew
           ../gradlew --no-daemon -p . :app:testDebugUnitTest
 
-      - name: Agent tests
-        run: |
-          python -m pip install --quiet -r requirements.txt
-          COOMI_KIMI_HOME=$(mktemp -d) python -m pytest tests -q
-
       - name: Assemble debug APK
         working-directory: android
         run: ../gradlew --no-daemon -p . :app:assembleDebug
@@ -109,12 +133,21 @@ jobs:
         run: |
           set -euo pipefail
           apk=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          test -n "$apk" || { echo "no APK produced"; exit 1; }
           echo "APK $apk $(du -h "$apk" | cut -f1)"
-          unzip -l "$apk" > /tmp/apk.txt
+          # -Z1 prints names only; `unzip -l` columns are awkward to match and
+          # hid the real entry layout the first time this check misfired.
+          unzip -Z1 "$apk" > /tmp/apk.txt
+          echo "--- asset and native entries ---"
+          grep -E '^(assets/|lib/)' /tmp/apk.txt || { echo "APK has no assets/ or lib/ entries at all"; cat /tmp/apk.txt | head -30; exit 1; }
+          echo "--- dex ---"
+          grep -c '^classes.*\.dex$' /tmp/apk.txt
           for want in assets/rootfs.tar.gz assets/deps.tar.gz assets/app.tar.gz \
-                      lib/arm64-v8a/libproot.so lib/arm64-v8a/libkimi.so classes.dex; do
-            grep -q "$want" /tmp/apk.txt || { echo "missing $want"; exit 1; }
+                      lib/arm64-v8a/libproot.so lib/arm64-v8a/libkimi.so; do
+            grep -qx "$want" /tmp/apk.txt || { echo "missing $want"; exit 1; }
           done
+          grep -Eq '^classes.*\.dex$' /tmp/apk.txt || { echo "missing classes.dex"; exit 1; }
+          grep -qx 'AndroidManifest.xml' /tmp/apk.txt || { echo "missing manifest"; exit 1; }
           echo "runtime complete inside the APK"
 
       - uses: actions/upload-artifact@v4
