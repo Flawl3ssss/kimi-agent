@@ -358,7 +358,13 @@ function renderConfig(options) {
     if (!target) return;
     const node = $(target);
     node.textContent = '';
-    (o.options || []).forEach((c) => node.append(el('option', null, c.name || c.value)).value = c.value);
+    (o.options || []).forEach((c) => {
+      // Element.append() returns undefined, so chaining `.value =` onto it
+      // threw and left every select after the first option empty.
+      const opt = el('option', null, c.name || c.value);
+      opt.value = c.value;
+      node.append(opt);
+    });
     node.disabled = !(o.options || []).length;
     setSelect(target, o.current_value);
     state.config[o.id] = o.options || [];
@@ -405,11 +411,17 @@ function dropPending(id) {
 }
 function renderDock() {
   const dock = $('#dock');
+  // #dock-hint lives *inside* #dock, so clearing textContent detaches it and a
+  // later $('#dock-hint') is null -- which threw here and left the whole
+  // approval dock (and the initialize handshake that follows) dead. Keep the
+  // node and re-attach it instead of recreating markup.
+  const hint = $('#dock-hint');
   dock.textContent = '';
+  if (hint) dock.append(hint);
   const badge = $('#pending-count');
   badge.textContent = String(state.pending.length);
   badge.className = 'badge' + (state.pending.length ? '' : ' zero');
-  $('#dock-hint').hidden = state.pending.length > 0;
+  if (hint) hint.hidden = state.pending.length > 0;
   state.pending.forEach((p) => dock.append(p.kind === 'q' ? questionCard(p) : approvalCard(p)));
 }
 function decide(id, body) {

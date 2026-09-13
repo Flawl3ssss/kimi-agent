@@ -85,10 +85,27 @@ class Bootstrap(private val ctx: Context, private val log: (String) -> Unit) {
         File(layout.depsDir, ".extracted-deps.tar.gz.bin").delete()
     }
 
-    /** Expand `assets/<name>` into [dest]; a per-archive marker keeps it idempotent. */
+    /**
+     * Expand `assets/<name>` into [dest].
+     *
+     * The marker stores the asset's byte size, not just "done": payload archives
+     * get re-packed between builds (the deps/ prefix fix, the UI fixes) while the
+     * extraction summary stays identical, so a size-blind marker would keep an
+     * installed device on stale files forever. Markers from the first build carry
+     * no size and are therefore re-extracted once, then become stable.
+     */
     private fun extract(asset: String, dest: File): Boolean {
         val marker = File(dest, ".extracted-$asset")
-        if (marker.isFile) return true
+        val assetSize = runCatching {
+            ctx.assets.openFd(asset).use { it.length }
+        }.getOrElse { -1L }
+        if (marker.isFile && assetSize > 0) {
+            val recorded = Regex("size=(\\d+)").find(
+                runCatching { marker.readText() }.getOrElse { "" })?.groupValues?.get(1)?.toLong()
+            if (recorded == assetSize) return true
+        } else if (marker.isFile) {
+            return true // size unknown (compressed asset); trust the existing marker
+        }
         val t0 = System.currentTimeMillis()
         return runCatching {
             dest.mkdirs()
@@ -97,7 +114,7 @@ class Bootstrap(private val ctx: Context, private val log: (String) -> Unit) {
             }
             log("$asset -> ${res.summary()} in ${(System.currentTimeMillis() - t0) / 1000}s")
             marker.parentFile?.mkdirs()
-            marker.writeText(res.summary() + "\n")
+            marker.writeText("size=$assetSize ${res.summary()}\n")
             true
         }.getOrElse {
             log("extract $asset failed: ${it.message}")

@@ -108,7 +108,12 @@ class AgentService : Service() {
         )
         log("spawn: ${argv.joinToString(" ")}")
         val p = runCatching {
-            ProcessBuilder(argv).redirectErrorStream(true).start()
+            ProcessBuilder(argv).redirectErrorStream(true).apply {
+                // proot reads its own settings from the Android-side environment;
+                // the guest's `env -i` cannot carry them because proot parses
+                // these before it ever execs the guest program.
+                environment().putAll(RuntimeSpec.prootEnv(layout))
+            }.start()
         }.getOrElse {
             AgentStatus.phase = AgentStatus.PHASE_FAILED
             AgentStatus.message = "proot не запустился: ${it.message}"

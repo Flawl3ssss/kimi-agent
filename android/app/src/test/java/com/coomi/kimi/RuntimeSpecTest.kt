@@ -99,6 +99,16 @@ class RuntimeSpecTest {
     }
 
     @Test
+    fun prootGetsItsOwnTmpDir() {
+        // libproot.so is the Termux build and defaults to
+        // /data/data/com.termux/files/usr/tmp, which our app cannot write;
+        // without this proot fails at "can't create glue rootfs".
+        val env = RuntimeSpec.prootEnv(layout)
+        assertEquals(layout.tmpDir.absolutePath, env["PROOT_TMP_DIR"])
+        assertTrue(env["PROOT_TMP_DIR"]!!.startsWith("/data/user/0/com.coomi.kimi/files"))
+    }
+
+    @Test
     fun agentEnvOrderIsStable() {
         val first = RuntimeSpec.agentEnv().map { it.first }
         assertEquals(first, RuntimeSpec.agentEnv().map { it.first })

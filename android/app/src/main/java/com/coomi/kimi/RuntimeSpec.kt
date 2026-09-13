@@ -101,6 +101,21 @@ object RuntimeSpec {
         return cmd
     }
 
+    /**
+     * Environment for the proot process itself, i.e. the Android side, before
+     * `env -i` wipes the guest's.
+     *
+     * PROOT_TMP_DIR is not optional: this libproot.so is the Termux build and it
+     * has /data/data/com.termux/files/usr/tmp/ compiled in as its default. That
+     * belongs to another app, so proot cannot create it and fails with
+     * "can't create temporary directory" -> "can't create glue rootfs" ->
+     * "execve(/usr/bin/env): No such file or directory", which looks like a
+     * broken rootfs but is not: the glue binaries proot injects never got
+     * written. Pointing it at our own runtime/tmp fixes all of it.
+     */
+    fun prootEnv(layout: Layout): Map<String, String> =
+        mapOf("PROOT_TMP_DIR" to layout.tmpDir.absolutePath)
+
     /** Files the unpacked runtime must contain before the agent can start. */
     fun requiredFiles(layout: Layout): List<File> = listOf(
         layout.proot,
@@ -140,5 +155,12 @@ class Layout(val filesDir: File, val nativeLibDir: File) {
             it.mkdirs()
         }
         File(rootfs, "usr/local/bin").mkdirs()
+        // Guest-side mount points. proot warns "sanitizing the guest path
+        // (binding) /opt/deps: No such file or directory" for every -b target
+        // missing from the rootfs; creating them up front keeps the log free of
+        // noise that looks like a failure.
+        listOf("opt/agent", "opt/deps", "home/coomi", "workspace", "tmp").forEach {
+            File(rootfs, it).mkdirs()
+        }
     }
 }
