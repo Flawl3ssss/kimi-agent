@@ -25,11 +25,16 @@ STAGE="${STAGE:-/tmp/kimi-payload}"
 ROOTFS_SRC="${ROOTFS_SRC:-/tmp/kimi-rootfs/rootfs.tar.gz}"
 PROOT_SRC="${PROOT_SRC:-/workspace/.coomi/runtime-v2/downloads/proot-host-arm64.tar.gz}"
 
+# The asset names end in .bin for a non-obvious reason: Android's AssetManager
+# treats a ".gz" suffix specially — it strips it from the visible name and
+# gunzips transparently on open. A 67 MB rootfs.tar.gz would therefore appear as
+# "rootfs.tar" and arrive decompressed (or worse, half-decompressed), which is
+# what this build actually shipped before being fixed. ".bin" is inert.
 mkdir -p "$ASSETS" "$STAGE"
 
 echo "==> rootfs"
 [ -s "$ROOTFS_SRC" ] || "$HERE/build_rootfs.sh" "$(dirname "$ROOTFS_SRC")"
-install -m 644 "$ROOTFS_SRC" "$ASSETS/rootfs.tar.gz"
+install -m 644 "$ROOTFS_SRC" "$ASSETS/rootfs.tar.gz.bin"
 
 echo "==> python deps (--target keeps the tree relocatable)"
 rm -rf "$STAGE/deps"; mkdir -p "$STAGE/deps"
@@ -38,12 +43,12 @@ uv pip install --python /usr/bin/python3.12 --target "$STAGE/deps" --no-cache \
 rm -rf "$STAGE/deps/pip" "$STAGE/deps/setuptools" "$STAGE/deps/wheel" \
        "$STAGE/deps/pkg_resources" "$STAGE/deps/_distutils_hack" 2>/dev/null || true
 find "$STAGE/deps" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
-tar -C "$STAGE" --format=gnu -czf "$ASSETS/deps.tar.gz" deps
+tar -C "$STAGE" --format=gnu -czf "$ASSETS/deps.tar.gz.bin" deps
 
 echo "==> agent source"
 find "$PROJ" -maxdepth 3 -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
 rm -rf "$PROJ/.pytest_cache"
-tar -C "$PROJ" --format=gnu -czf "$ASSETS/app.tar.gz" \
+tar -C "$PROJ" --format=gnu -czf "$ASSETS/app.tar.gz.bin" \
   --exclude='__pycache__' --exclude='*.pyc' \
   kimi_agent web config run.sh requirements-runtime.txt
 

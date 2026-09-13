@@ -25,8 +25,13 @@ android {
     }
 
     // Payload tarballs are already gzipped; re-compressing them wastes build time.
+    //
+    // The suffix is .bin, not .gz, on purpose: aapt2 gunzips a ".gz" asset and
+    // strips the extension, so "rootfs.tar.gz" was packaged as an uncompressed
+    // "rootfs.tar" — 245 MB instead of 70 MB, and unreadable by the GZIP stream
+    // Bootstrap opens it with. noCompress keeps .bin byte-for-byte.
     androidResources {
-        noCompress += listOf("gz", "tar")
+        noCompress += listOf("gz", "tar", "bin")
     }
 
     packaging {

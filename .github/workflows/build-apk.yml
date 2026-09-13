@@ -142,9 +142,22 @@ jobs:
           grep -E '^(assets/|lib/)' /tmp/apk.txt || { echo "APK has no assets/ or lib/ entries at all"; cat /tmp/apk.txt | head -30; exit 1; }
           echo "--- dex ---"
           grep -c '^classes.*\.dex$' /tmp/apk.txt
-          for want in assets/rootfs.tar.gz assets/deps.tar.gz assets/app.tar.gz \
+          for want in assets/rootfs.tar.gz.bin assets/deps.tar.gz.bin assets/app.tar.gz.bin \
                       lib/arm64-v8a/libproot.so lib/arm64-v8a/libkimi.so; do
             grep -qx "$want" /tmp/apk.txt || { echo "missing $want"; exit 1; }
+          done
+          # Names alone were not enough once: aapt2 gunzips a ".gz" asset and
+          # renames it, so the APK held a valid-looking "rootfs.tar" that
+          # Bootstrap's GZIPInputStream could never read. Check the magic bytes
+          # and the stored size of each payload instead of trusting the name.
+          for a in rootfs deps app; do
+            entry="assets/$a.tar.gz.bin"
+            magic=$(unzip -p "$apk" "$entry" | head -c2 | od -An -tx1 | tr -d ' \n')
+            packed=$(unzip -p "$apk" "$entry" | wc -c)
+            echo "$entry magic=$magic bytes=$packed"
+            [ "$magic" = "1f8b" ] || { echo "$entry is not gzip (aapt2 decompressed it)"; exit 1; }
+            src=$(stat -c %s "android/app/assets/$a.tar.gz.bin")
+            [ "$packed" = "$src" ] || { echo "$entry changed size: $packed vs $src"; exit 1; }
           done
           grep -Eq '^classes.*\.dex$' /tmp/apk.txt || { echo "missing classes.dex"; exit 1; }
           grep -qx 'AndroidManifest.xml' /tmp/apk.txt || { echo "missing manifest"; exit 1; }

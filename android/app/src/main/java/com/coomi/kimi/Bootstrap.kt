@@ -37,10 +37,13 @@ class Bootstrap(private val ctx: Context, private val log: (String) -> Unit) {
         }
         layout.readyMarker.delete()
 
+        // ".bin" is not cosmetic: aapt2 gunzips assets whose name ends in ".gz"
+        // and strips the extension, so "rootfs.tar.gz" reached the device as an
+        // uncompressed "rootfs.tar" while Bootstrap still opens it as gzip.
         for ((asset, dest, label) in listOf(
-            Triple("rootfs.tar.gz", layout.rootfs, "Распаковка Ubuntu rootfs…"),
-            Triple("deps.tar.gz", layout.depsDir, "Распаковка Python-библиотек…"),
-            Triple("app.tar.gz", layout.agentDir, "Распаковка агента…"),
+            Triple("rootfs.tar.gz.bin", layout.rootfs, "Распаковка Ubuntu rootfs…"),
+            Triple("deps.tar.gz.bin", layout.depsDir, "Распаковка Python-библиотек…"),
+            Triple("app.tar.gz.bin", layout.agentDir, "Распаковка агента…"),
         )) {
             onProgress(label)
             if (!extract(asset, dest)) return false
