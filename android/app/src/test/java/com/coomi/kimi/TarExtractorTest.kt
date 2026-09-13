@@ -18,11 +18,16 @@ import org.junit.Test
  */
 class TarExtractorTest {
 
-    private fun fixture(): File {
-        val url = javaClass.classLoader.getResource("fixture.tar.gz")
+    /**
+     * Read via the class-loader stream, not a File: AGP may expose unit-test
+     * resources through a jar on the classpath, where no file path exists.
+     */
+    private val fixtureBytes: ByteArray by lazy {
+        javaClass.classLoader.getResourceAsStream("fixture.tar.gz")?.readBytes()
             ?: error("fixture.tar.gz missing from test resources")
-        return File(url.toURI())
     }
+
+    private fun fixture(): java.io.InputStream = ByteArrayInputStream(fixtureBytes)
 
     private fun tempDir(prefix: String): File = Files.createTempDirectory(prefix).toFile()
 
@@ -33,7 +38,7 @@ class TarExtractorTest {
     fun extractsGnuArchiveIncludingLongNames() {
         val dest = tempDir("tarx")
         try {
-            val result = fixture().inputStream().use { TarExtractor.extractGz(it, dest) }
+            val result = fixture().use { TarExtractor.extractGz(it, dest) }
 
             assertEquals("long-name-content", File(dest, longName).readText())
             assertEquals("hello-file\n", File(dest, "usr/bin/echo.sh").readText())
@@ -56,7 +61,7 @@ class TarExtractorTest {
         // a reader forgets the padding and desynchronises every later entry.
         val dest = tempDir("tarx")
         try {
-            fixture().inputStream().use { TarExtractor.extractGz(it, dest) }
+            fixture().use { TarExtractor.extractGz(it, dest) }
             assertEquals(333L, File(dest, "payload.bin").length())
             // Entries after it still landed, so padding was consumed exactly.
             assertTrue(File(dest, "usr/bin/echo.sh").exists())
@@ -70,7 +75,7 @@ class TarExtractorTest {
     fun executableBitSurvives() {
         val dest = tempDir("tarx")
         try {
-            fixture().inputStream().use { TarExtractor.extractGz(it, dest) }
+            fixture().use { TarExtractor.extractGz(it, dest) }
             assertTrue(File(dest, "usr/bin/echo.sh").canExecute())
         } finally {
             dest.deleteRecursively()
