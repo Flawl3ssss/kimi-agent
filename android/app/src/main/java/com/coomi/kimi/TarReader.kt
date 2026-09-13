@@ -83,7 +83,9 @@ class TarReader(private val raw: InputStream) {
         val cap = size.coerceAtMost(1L shl 20).toInt()
         val out = ByteArray(cap)
         readFully(out, 0, cap)
-        skipBlocks(size)
+        // Only the padding is left to skip: skipBlocks(size) would also re-skip
+        // the `cap` bytes just read and land us one block into the next header.
+        skipPadding(size, cap.toLong())
         return String(out, Charsets.UTF_8).trim('\u0000', ' ', '\n')
     }
 
@@ -112,6 +114,18 @@ class TarReader(private val raw: InputStream) {
 
     fun skipBlocks(size: Long) {
         var left = ((size + 511) / 512) * 512
+        while (left > 0) {
+            val n = raw.skip(left)
+            if (n <= 0) {
+                if (raw.read() < 0) return
+                left -= 1
+            } else left -= n
+        }
+    }
+
+    /** Skip the block padding that follows `read` already-consumed bytes. */
+    private fun skipPadding(size: Long, alreadyRead: Long) {
+        var left = ((size + 511) / 512) * 512 - alreadyRead
         while (left > 0) {
             val n = raw.skip(left)
             if (n <= 0) {

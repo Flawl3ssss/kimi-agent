@@ -81,12 +81,22 @@ object TarExtractor {
                 }
                 TarHeader.FILE, TarHeader.FILE_ALT -> {
                     target.parentFile?.mkdirs()
-                    FileOutputStream(target).use { out ->
-                        BufferedOutputStream(out, 1 shl 16).use { tar.copyPayload(it, hdr.size) }
+                    if (target.isDirectory) {
+                        // The archive asks for a file where a directory already
+                        // is — most often the root "./" entry, which tar writes
+                        // as a directory but GNU tar's long-name record can also
+                        // surface as an empty name. Opening a directory throws,
+                        // and one such record would abort the whole unpack.
+                        tar.skipBlocks(hdr.size)
+                        skipped += "regular file over a directory: $name"
+                    } else {
+                        FileOutputStream(target).use { out ->
+                            BufferedOutputStream(out, 1 shl 16).use { tar.copyPayload(it, hdr.size) }
+                        }
+                        if (hdr.mode and 0b111 != 0) target.setExecutable(true, true)
+                        target.setReadable(true, false)
+                        files++
                     }
-                    if (hdr.mode and 0b111 != 0) target.setExecutable(true, true)
-                    target.setReadable(true, false)
-                    files++
                 }
                 TarHeader.SYMLINK -> {
                     tar.skipBlocks(hdr.size)
