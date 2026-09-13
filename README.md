@@ -205,12 +205,62 @@ COOMI_KIMI_URL=http://127.0.0.1:8775 ./.venv/bin/python scripts/check_mcp_gated.
   signal: null}`.
 * Ошибки инструментов отдаются как `ToolError`, иначе `mcp` оборачивает их в
   `Error executing tool <name>` и модель не видит текста.
+* **`COOMI_KIMI_HOME` не изолирует конфиг Kimi.** Kimi Code читает
+  `config.toml` из `KIMI_CODE_HOME`, поэтому ручной вызов
+  `config.write_provider_config()` без `export KIMI_CODE_HOME=$(mktemp -d)`
+  перезаписывает живой `~/.kimi-code/config.toml` (в этой сессии — снёс
+  рабочий конфиг; `.bak` при этом стал копией тестовой заглушки, так что
+  откатываться пришлось не по нему). Перед любым ручным прогоном писателя
+  конфига — отдельный `KIMI_CODE_HOME`.
 * `~/.kimi-code` на bind-mount f2fs из Android → hardlink в cache-store не
   проходит (`EACCES` в логе пачками). Это шум, на работу не влияет.
 * Playwright-скриншоты UI в этом окружении невозможны: chromium под proot не
   стартует (exit 127).
-* APK-обёртка не собрана: билд-кит пуст, нет gradle/JDK/Android SDK. Пока это
-  сервер + веб/терминал.
+* APK собран и воспроизводится из репозитория: см. «Android / APK» ниже.
+
+## Android / APK
+
+Мозг тот же (`kimi_agent`, ACP поверх `kimi acp`), обёртка — тонкий Android-слой:
+WebView на консоль агента плюс foreground-сервис, который держит процесс.
+
+```
+android/                 Gradle-проект (AGP 8.5.2, Kotlin 1.9.24, wrapper 8.7)
+  app/assets/*.tar.gz.bin   rootfs (67 МБ) + deps (13 МБ) + код агента (72 КБ)
+  app/jniLibs/arm64-v8a/    libproot.so (bionic), libkimi.so (качается на CI)
+  app/src/main/java/…/      RuntimeSpec, Bootstrap, TarReader/TarExtractor,
+                            AgentService, MainActivity, AgentStatus
+.github/workflows/       build-apk.yml: payload → kimi-binary → build
+scripts/build_rootfs.sh  образ rootfs из пакетов этого гостя (163 пакета)
+scripts/package_payload.sh  упаковка payload в assets/
+```
+
+Порядок на телефоне: `Bootstrap` распаковывает три tar.gz своим `TarExtractor`
+(proot не может разпаковать собственный rootfs, а toybox `tar` не тянет pax/GNU
+заголовки), копирует `libkimi.so` → `rootfs/usr/local/bin/kimi`, ставит маркер
+готовности. Дальше `AgentService` поднимает проот-гость командой из
+`RuntimeSpec.buildCommand()` и считает порт 8765 открытым только когда к нему
+реально удаётся подключиться.
+
+Три вещи здесь неочевидны и были найдены билдом, а не чтением доков:
+
+* **`targetSdk = 28` намеренно.** С 29 Android запрещает `execve()` по путям
+  внутри app-data, а весь runtime лежит именно там — тот же приём у Termux.
+* **`.bin` в именах ассетов.** aapt2/AssetManager обрабатывают суффикс `.gz`
+  специально: разжимают ассет и срезают расширение. С `rootfs.tar.gz` в APK
+  попадал 245 МБ несжатого `rootfs.tar`, который `GZIPInputStream` прочесть не
+  может, и APK весел 349 МБ вместо 150. CI теперь сверяет магические байты
+  (`1f 8b`) и размер каждого ассета с исходным файлом.
+* **`buildFeatures.buildConfig = true`** — в AGP 8 он выключен по умолчанию, а
+  `AgentService` передаёт в гость `BuildConfig.VERSION_NAME`.
+
+Сборка на телефоне невозможна в принципе: `aapt2` публикуется только под
+x86-64 Linux. Поэтому компиляция идёт на GitHub Actions, а раннер arm64-бинарь
+только скачивает и проверяет по sha256 — не исполняет.
+
+Локально проверить компиляцию Kotlin нельзя: apt/dpkg в этом госте сломан
+(`dpkg --configure -a` → `Permission denied` на `/var/lib/dpkg/status-old`),
+JDK/Kotlin поставить нечем. Единственный контур — CI; для разбора тар-потока без
+JVM написан `scripts/simulate_tar.py` (порт `TarReader`/`TarExtractor`).
 
 ## Переменные
 
