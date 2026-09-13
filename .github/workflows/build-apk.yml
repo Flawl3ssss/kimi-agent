@@ -68,21 +68,21 @@ jobs:
       - name: Verify committed payload
         run: |
           set -euo pipefail
-          for f in rootfs.tar.gz deps.tar.gz app.tar.gz; do
+          for f in rootfs.tar.gz.bin deps.tar.gz.bin app.tar.gz.bin; do
             p="android/app/assets/$f"
             test -s "$p" || { echo "missing $p — run scripts/package_payload.sh"; exit 1; }
             tar -tzf "$p" > "/tmp/$f.txt" || { echo "$p is not a readable tar.gz"; exit 1; }
             grep -q . "/tmp/$f.txt" || { echo "$p is empty"; exit 1; }
             echo "$f $(du -h "$p" | cut -f1) ($(wc -l < "/tmp/$f.txt") entries)"
           done
-          tar -tzf android/app/assets/app.tar.gz  > /tmp/app.txt
-          tar -tzf android/app/assets/deps.tar.gz > /tmp/deps.txt
+          tar -tzf android/app/assets/app.tar.gz.bin  > /tmp/app.txt
+          tar -tzf android/app/assets/deps.tar.gz.bin > /tmp/deps.txt
           grep -q 'kimi_agent/cli.py'   /tmp/app.txt
           grep -q 'aiohttp/__init__.py' /tmp/deps.txt
           # Pinned by RuntimeSpec.requiredFiles(): an archive that lost either
           # would unpack into a runtime that cannot start.
-          grep -q '^\./usr/bin/python3\.12$'      /tmp/rootfs.tar.gz.txt
-          grep -q '^\./usr/lib/aarch64-linux-gnu/ld-linux-aarch64\.so\.1$' /tmp/rootfs.tar.gz.txt
+          grep -q '^\./usr/bin/python3\.12$'      /tmp/rootfs.tar.gz.bin.txt
+          grep -q '^\./usr/lib/aarch64-linux-gnu/ld-linux-aarch64\.so\.1$' /tmp/rootfs.tar.gz.bin.txt
           test -s android/app/jniLibs/arm64-v8a/libproot.so
 
       - name: Agent tests
